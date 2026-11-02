@@ -35,25 +35,25 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Prepare signing key (if configured in Secrets)
+      - name: Prepare signing key
         env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY || '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' }}
         run: |
-          if [ -n "$SIGNING_KEY" ]; then
-            echo "$SIGNING_KEY" | base64 -d > signingkey.jks
-          fi
+          echo "$SIGNING_KEY" | base64 -d > signingkey.jks
 
       - name: Build enabled extensions
         env:
-          ALIAS: ${{ secrets.ALIAS }}
-          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS || 'xnore' }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || 'xnore123' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'xnore123' }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease
 
       - name: Package repository into dist
-        run: python3 build-my-repo.py
+        run: |
+          python3 -m pip install --user --upgrade protobuf
+          python3 build-my-repo.py
 
       - name: Clean up signing key
         if: always()
