@@ -33,8 +33,8 @@ rootProject.name = "Keiyoushi"
  * Để build toàn bộ các nguồn trong src/, bỏ comment dòng loadAllIndividualExtensions()
  * Hiện tại chỉ kích hoạt build riêng nguồn TruyenVN:
  */
-// loadAllIndividualExtensions()
-loadIndividualExtension("vi", "truyenvn")
+loadAllIndividualExtensions()
+// loadIndividualExtension("vi", "truyenvn")
 
 /**
  * ===================================== COMMON CONFIGURATION ======================================
