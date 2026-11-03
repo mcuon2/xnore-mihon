@@ -30,8 +30,6 @@ rootProject.name = "Keiyoushi"
 
 /**
  * Add or remove modules to load as needed for local development here.
- * Để build toàn bộ các nguồn trong src/, bỏ comment dòng loadAllIndividualExtensions()
- * Hiện tại chỉ kích hoạt build riêng nguồn TruyenVN:
  */
 loadAllIndividualExtensions()
 // loadIndividualExtension("vi", "truyenvn")
@@ -70,4 +68,3 @@ fun File.eachDir(block: (File) -> Unit) {
         }
     }
 }
-
