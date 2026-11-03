@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.all.manhwadashraw
+package eu.kanade.tachiyomi.extension.en.manhwaraw
 
 import eu.kanade.tachiyomi.multisrc.madara.MadaraNoAjax
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -13,7 +13,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Source
-abstract class ManhwaDashRaw : MadaraNoAjax() {
+abstract class ManhwaRaw : MadaraNoAjax() {
     override val chapterDateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ROOT)
 
     override val mangaDetailsSelectorStatus = "div.post-content_item:contains(Status) > div.summary-content"
