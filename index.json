@@ -1,0 +1,100 @@
+{
+  "name": "Xnore Extensions",
+  "badgeLabel": "XNORE",
+  "signingKey": "6dd0bec61ce11f506a5c90c395accde5ae615622b28e630a68c1b86ad7c1b23b",
+  "contact": {
+    "website": "https://github.com/mcuon2/xnore-mihon"
+  },
+  "extensionList": {
+    "extensions": [
+      {
+        "name": "Manhwa-raw",
+        "packageName": "eu.kanade.tachiyomi.extension.en.manhwaraw",
+        "resources": {
+          "apkUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/apk/tachiyomi-en.manhwaraw-v1.6.61.apk",
+          "iconUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/icon/eu.kanade.tachiyomi.extension.en.manhwaraw.png",
+          "jarUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/jar/tachiyomi-en.manhwaraw-v1.6.61.jar"
+        },
+        "extensionLib": "1.6",
+        "versionCode": "106061",
+        "versionName": "1.6.61",
+        "contentWarning": "CONTENT_WARNING_NSFW",
+        "sources": [
+          {
+            "id": "2310256971450042894",
+            "name": "Manhwa-raw",
+            "language": "en",
+            "homeUrl": "https://manhwa-raw.com"
+          }
+        ]
+      },
+      {
+        "name": "CuuTruyen",
+        "packageName": "eu.kanade.tachiyomi.extension.vi.cuutruyen",
+        "resources": {
+          "apkUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/apk/tachiyomi-vi.cuutruyen-v1.6.2.apk",
+          "iconUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/icon/eu.kanade.tachiyomi.extension.vi.cuutruyen.png",
+          "jarUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/jar/tachiyomi-vi.cuutruyen-v1.6.2.jar"
+        },
+        "extensionLib": "1.6",
+        "versionCode": "106002",
+        "versionName": "1.6.2",
+        "contentWarning": "CONTENT_WARNING_MIXED",
+        "sources": [
+          {
+            "id": "8222087175453285202",
+            "name": "CuuTruyen",
+            "language": "vi",
+            "homeUrl": "https://cuutruyen.net",
+            "mirrorUrls": [
+              "https://cuutruyen.net",
+              "https://hetcuutruyen.net"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "CuuTruyen (unoriginal)",
+        "packageName": "eu.kanade.tachiyomi.extension.vi.cuutruyenmoe",
+        "resources": {
+          "apkUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/apk/tachiyomi-vi.cuutruyenmoe-v1.6.4.apk",
+          "iconUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/icon/eu.kanade.tachiyomi.extension.vi.cuutruyenmoe.png",
+          "jarUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/jar/tachiyomi-vi.cuutruyenmoe-v1.6.4.jar"
+        },
+        "extensionLib": "1.6",
+        "versionCode": "106004",
+        "versionName": "1.6.4",
+        "contentWarning": "CONTENT_WARNING_MIXED",
+        "sources": [
+          {
+            "id": "3973269831131863421",
+            "name": "CuuTruyen (unoriginal)",
+            "language": "vi",
+            "homeUrl": "https://cuutruyen.moe"
+          }
+        ]
+      },
+      {
+        "name": "TruyenVN",
+        "packageName": "eu.kanade.tachiyomi.extension.vi.truyenvn",
+        "resources": {
+          "apkUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/apk/tachiyomi-vi.truyenvn-v1.6.1.apk",
+          "iconUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/icon/eu.kanade.tachiyomi.extension.vi.truyenvn.png",
+          "jarUrl": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/jar/tachiyomi-vi.truyenvn-v1.6.1.jar"
+        },
+        "extensionLib": "1.6",
+        "versionCode": "106001",
+        "versionName": "1.6.1",
+        "contentWarning": "CONTENT_WARNING_MIXED",
+        "sources": [
+          {
+            "id": "5758845301840022147",
+            "name": "TruyenVN",
+            "language": "vi",
+            "homeUrl": "https://truyenvn.my"
+          }
+        ]
+      }
+    ]
+  }
+}

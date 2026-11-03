@@ -1,0 +1,9 @@
+{
+  "meta": {
+    "name": "Xnore Extensions",
+    "shortName": "XNORE",
+    "website": "https://github.com/mcuon2/xnore-mihon",
+    "signingKeyFingerprint": "6dd0bec61ce11f506a5c90c395accde5ae615622b28e630a68c1b86ad7c1b23b"
+  },
+  "index_v2": "https://raw.githubusercontent.com/mcuon2/xnore-mihon/repo/index.pb"
+}
