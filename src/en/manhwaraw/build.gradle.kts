@@ -4,14 +4,9 @@ plugins {
     alias(kei.plugins.extension)
 }
 
-dependencies {
-    implementation(project(":lib:cronet"))
-    implementation(project(":lib:randomua"))
-}
-
 keiyoushi {
     name = "Manhwa-raw"
-    versionCode = 1
+    versionCode = 2
     contentWarning = ContentWarning.NSFW
     libVersion = "1.6"
 

@@ -1,7 +1,5 @@
 package eu.kanade.tachiyomi.extension.en.manhwaraw
 
-import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -9,13 +7,8 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import keiyoushi.annotation.Source
-import keiyoushi.lib.cronet.cronet
-import keiyoushi.lib.randomua.addRandomUAPreference
-import keiyoushi.lib.randomua.setRandomUserAgent
 import keiyoushi.network.Fetch
-import keiyoushi.network.addCookie
 import keiyoushi.network.get
-import keiyoushi.network.rateLimit
 import keiyoushi.source.KeiSource
 import keiyoushi.utils.asJsoup
 import keiyoushi.utils.attrOrNull
@@ -25,10 +18,9 @@ import keiyoushi.utils.textOrNull
 import keiyoushi.utils.toJsonElement
 import keiyoushi.utils.tryParseDate
 import kotlinx.serialization.json.JsonElement
-import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.text.Normalizer
@@ -41,25 +33,10 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 @Source
-abstract class ManhwaRaw :
-    KeiSource(),
-    ConfigurableSource {
-
-    override fun OkHttpClient.Builder.configureClient() = this
-        .cronet()
-        .addCookie("pu_wex" to "true")
-        .rateLimit(2)
-
-    override fun Headers.Builder.configureHeaders() = setRandomUserAgent()
-
-    override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        screen.addRandomUAPreference()
-    }
-
-    override fun getMangaUrl(manga: SManga): String = baseUrl + manga.url
+abstract class ManhwaRaw : KeiSource() {
 
     @Volatile
-    private var mbkToken: String = DEFAULT_MBK_TOKEN
+    private var searchToken: String = DEFAULT_MBK_TOKEN
 
     // ============================== Popular ===============================
 
@@ -83,11 +60,17 @@ abstract class ManhwaRaw :
 
     override suspend fun getSearchMangaList(page: Int, query: String, filters: FilterList): MangasPage {
         if (query.isNotBlank()) {
-            val slug = slugifySearchQuery(query)
+            val slug = query.toSearchSlug()
             if (slug.isEmpty()) return MangasPage(emptyList(), false)
 
-            val url = buildPageUrl("$baseUrl/search/$mbkToken/$slug", page)
-            val document = client.get(url, Fetch.DOCUMENT).asJsoup()
+            val response = client.get(buildSearchUrl(searchToken, slug, page), Fetch.DOCUMENT, ensureSuccess = false)
+            val document = if (response.isSuccessful) {
+                response.asJsoup()
+            } else {
+                response.close()
+                val refreshedToken = fetchSearchToken()
+                client.get(buildSearchUrl(refreshedToken, slug, page), Fetch.DOCUMENT).asJsoup()
+            }
             return parseMangaPage(document, includeSlider = false)
         }
 
@@ -111,9 +94,21 @@ abstract class ManhwaRaw :
         return parseMangaPage(document, includeSlider = false)
     }
 
+    private suspend fun fetchSearchToken(): String {
+        val document = client.get(baseUrl, Fetch.DOCUMENT).asJsoup()
+        return document.selectFirst("input[name=mbk_token]")?.attrOrNull("value")
+            ?.also { searchToken = it }
+            ?: searchToken
+    }
+
+    private fun buildSearchUrl(token: String, slug: String, page: Int): HttpUrl = baseUrl.toHttpUrl().newBuilder().apply {
+        addPathSegments("search/$token/$slug/")
+        if (page > 1) addPathSegments("page/$page/")
+    }.build()
+
     private fun parseMangaPage(document: Document, includeSlider: Boolean): MangasPage {
         document.selectFirst("input[name=mbk_token]")?.attrOrNull("value")?.let {
-            mbkToken = it
+            searchToken = it
         }
 
         val selector = if (includeSlider) {
@@ -171,26 +166,28 @@ abstract class ManhwaRaw :
         author = document.select("div.author-content > a").joinToString { it.text() }.ifBlank { null }
         artist = document.select("div.artist-content > a").joinToString { it.text() }.ifBlank { null }
 
-        val summary = document.selectFirst("div.summary-container, div.summary__content")?.textOrNull()
-        val altName = document.selectFirst("div.summary-heading:contains(Alternative) + div.summary-content")?.textOrNull()
+        val summary = document.selectFirst("div.post-content_item:contains(Summary) div.summary-container, div.summary-container, div.summary__content")?.let { element ->
+            element.select("p").takeIf(List<Element>::isNotEmpty)?.joinToString("\n\n") { it.text() } ?: element.textOrNull()
+        }
+        val altName = document.selectFirst("div.post-content_item:contains(Alt) div.summary-content")?.textOrNull()
             ?.takeIf { !it.equals("Updating", ignoreCase = true) }
         description = buildString {
-            if (summary != null) append(summary)
-            if (altName != null) {
+            if (!summary.isNullOrBlank()) append(summary)
+            if (!altName.isNullOrBlank()) {
                 if (isNotEmpty()) append("\n\n")
                 append("Alternative: ").append(altName)
             }
         }.ifBlank { null }
 
         genre = buildList {
-            document.selectFirst("div.summary-heading:contains(Type) + div.summary-content")?.textOrNull()
+            document.selectFirst("div.post-content_item:contains(Type) div.summary-content")?.textOrNull()
                 ?.takeIf { !it.equals("Updating", ignoreCase = true) }
                 ?.let(::add)
             document.select("div.genres-content a, div.tags-content a").mapTo(this) { it.text() }
         }.distinct().joinToString().ifBlank { null }
 
         status = parseStatus(
-            document.selectFirst("div.summary-heading:contains(Status) + div.summary-content")?.text(),
+            document.selectFirst("div.post-content_item:contains(Status) > div.summary-content, div.summary-heading:contains(Status) + div.summary-content")?.text(),
         )
         thumbnail_url = document.selectFirst("div.summary_image img")?.imgAttr()
     }
@@ -198,7 +195,7 @@ abstract class ManhwaRaw :
     private fun parseStatus(statusText: String?): Int {
         val text = statusText?.lowercase(Locale.ROOT) ?: return SManga.UNKNOWN
         return when {
-            "ongoing" in text -> SManga.ONGOING
+            "ongoing" in text || "on going" in text -> SManga.ONGOING
             "completed" in text || "end" in text -> SManga.COMPLETED
             "on hold" in text || "hiatus" in text -> SManga.ON_HIATUS
             "canceled" in text || "cancelled" in text || "dropped" in text -> SManga.CANCELLED
@@ -257,12 +254,21 @@ abstract class ManhwaRaw :
 
     override suspend fun getPageList(chapter: SChapter): List<Page> {
         val document = client.get(getChapterUrl(chapter), Fetch.DOCUMENT).asJsoup()
-        return document.select("div.page-break img.wp-manga-chapter-img, div.reading-content div.page-break img")
+        val chapterLocation = document.location()
+        return document.select("div.page-break img.wp-manga-chapter-img")
             .mapIndexedNotNull { index, element ->
                 val imageUrl = element.imgAttr() ?: return@mapIndexedNotNull null
-                Page(index, imageUrl = imageUrl)
+                Page(index, chapterLocation, imageUrl)
             }
     }
+
+    override fun getImageRequest(page: Page): Request = super.getImageRequest(page).newBuilder()
+        .apply {
+            if (page.url.isNotEmpty()) {
+                header("Referer", page.url)
+            }
+        }
+        .build()
 
     // ============================== Filters ===============================
 
@@ -270,6 +276,9 @@ abstract class ManhwaRaw :
 
     override suspend fun fetchFilterData(): JsonElement {
         val document = client.get("$baseUrl/manga-tag/fin/", Fetch.DOCUMENT).asJsoup()
+        document.selectFirst("input[name=mbk_token]")?.attrOrNull("value")?.let {
+            searchToken = it
+        }
         val genres = document.select("div.genres ul li a[href*='/manga-genre/']").mapNotNull { link ->
             val name = link.ownText().trim().ifEmpty { return@mapNotNull null }
             val slug = link.attr("href").trimEnd('/').substringAfterLast('/').ifEmpty { return@mapNotNull null }
@@ -295,15 +304,15 @@ abstract class ManhwaRaw :
 
     private fun buildPageUrl(basePath: String, page: Int): HttpUrl = basePath.toHttpUrl().newBuilder().apply {
         if (page > 1) {
-            addPathSegment("page")
-            addPathSegment(page.toString())
+            addPathSegments("page/$page/")
+        } else {
+            addPathSegment("")
         }
-        addPathSegment("")
     }.build()
 
-    private fun slugifySearchQuery(query: String): String = Normalizer.normalize(query.trim().lowercase(Locale.ROOT), Normalizer.Form.NFD)
-        .replace(diacriticsRegex, "")
-        .replace(nonAlphanumRegex, "-")
+    private fun String.toSearchSlug(): String = Normalizer.normalize(lowercase(Locale.ROOT).trim(), Normalizer.Form.NFD)
+        .replace(DIACRITICS, "")
+        .replace(NON_SLUG_CHARS, "-")
         .trim('-')
 
     private fun Element.imgAttr(): String? = attrOrNull("abs:data-src")?.trim()
@@ -314,10 +323,10 @@ abstract class ManhwaRaw :
 
     companion object {
         private const val DEFAULT_MBK_TOKEN = "df929d81"
-        private val diacriticsRegex = Regex("""[\u0300-\u036f]+""")
-        private val nonAlphanumRegex = Regex("""[^a-z0-9]+""")
+        private val DIACRITICS = Regex("""[\u0300-\u036f]""")
+        private val NON_SLUG_CHARS = Regex("""[^a-z0-9]+""")
         private val relativeDateRegex = Regex("""(\d+)\s*(seconds?|minutes?|hours?|days?|weeks?|months?|years?)""")
         private val monthDayFormat = DateTimeFormatter.ofPattern("MM/dd", Locale.ROOT)
-        private val fullDateFormat = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US)
+        private val fullDateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ROOT)
     }
 }

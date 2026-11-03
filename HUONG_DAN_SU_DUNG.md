@@ -14,7 +14,7 @@ Tài liệu này hướng dẫn chi tiết từ A-Z quy trình làm việc với
   - [Bước 3: Tạo bộ Icon chuẩn Android](#bước-3-tạo-bộ-icon-chuẩn-android)
   - [Bước 4: Cấu hình file `build.gradle.kts`](#bước-4-cấu-hình-file-buildgradlekts)
   - [Bước 5: Viết code lấy dữ liệu với `KeiSource`](#bước-5-viết-code-lấy-dữ-liệu-với-keisource)
-  - [Bước 6: Các lưu ý & lỗi thường gặp (403 Ảnh, Cloudflare, DTO)](#bước-6-các-lưu-ý--lỗi-thường-gặp-403-ảnh-cloudflare-dto)
+  - [Bước 6: Các lưu ý & lỗi thường gặp (403 Ảnh, Cloudflare, Anti-Bot, DTO)](#bước-6-các-lưu-ý--lỗi-thường-gặp-403-ảnh-cloudflare-anti-bot-dto)
   - [Bước 7: Kiểm tra (Lint) và Build ra file APK / JAR](#bước-7-kiểm-tra-lint-và-build-ra-file-apk--jar)
 - [Phần 2: Cách xử lý khi web truyện gốc thay đổi Domain](#phần-2-cách-xử-lý-khi-web-truyện-gốc-thay-đổi-domain)
   - [Cách 1: Đổi nhanh trực tiếp trong App (Không cần build lại)](#cách-1-đổi-nhanh-trực-tiếp-trong-app-không-cần-build-lại)
@@ -222,23 +222,93 @@ abstract class TenNguon : KeiSource() {
 
 ---
 
-### Bước 6: Các lưu ý & lỗi thường gặp (403 Ảnh, Cloudflare, DTO)
+### Bước 6: Các lưu ý & lỗi thường gặp (403 Ảnh, Cloudflare, Anti-Bot, DTO)
 
-1. **Lỗi không tải được ảnh bìa hoặc lỗi `HTTP 403` khi đọc chương:**
+#### 1. Chiến lược xử lý các trang web có xác thực Cloudflare & Chống Bot (Anti-Bot)
+
+Trong kiến trúc **Keiyoushi (`libVersion = "1.6"`)**, class `KeiSource` ở tầng `core` đã được thiết kế sẵn hệ thống giả lập trình duyệt mức gói tin mạng để phối hợp trực tiếp với `CloudflareInterceptor` của Mihon/Tachimanga. Khi làm việc với trang web có bật Cloudflare (như `manhwa-raw.com`), bạn **bắt buộc phải nắm rõ các nguyên tắc sống còn sau**:
+
+- **Nguyên tắc 1 — Tận dụng bộ Interceptor mặc định của `KeiSource` (KHÔNG tự ý gắn `:lib:cronet` hoặc `:lib:randomua`):**
+  - Mặc định, khi bạn kế thừa `KeiSource` và gọi `client.get(url, Fetch.DOCUMENT)`, hệ thống đã tự động chạy:
+    1. `CloudflareInterceptor` (của Mihon/Tachimanga): Tự động bắt lỗi `403`/`503` của Cloudflare, mở `Android System WebView` ngầm để giải thử thách và lưu cookie `cf_clearance` vào `CookieJar` dùng chung.
+    2. `BrowserCallInterceptor` & `BrowserHeadersInterceptor`: Tự động kiểm tra giao thức `Protocol.HTTP_2` trên kết nối của OkHttp, đọc `User-Agent` hiện tại, tự sinh đầy đủ bộ Client Hints & Fetch Metadata (`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`, `Upgrade-Insecure-Requests`, `Sec-Fetch-Site: same-origin`, `Sec-Fetch-Mode: navigate`, `Sec-Fetch-User: ?1`, `Sec-Fetch-Dest: document`, `Priority: u=0, i`) và **sắp xếp thứ tự các header trên đường truyền (wire order)** khớp 100% với Chrome/Firefox thật.
+    3. `CompressionInterceptor(Gzip, Deflate, Brotli, Zstd)`: Khai báo `Accept-Encoding: gzip, deflate, br, zstd` giống hệt trình duyệt hiện đại.
+  - **CẢNH BÁO QUAN TRỌNG — Tại sao KHÔNG dùng `.cronet()` (`:lib:cronet`), `.addCookie(...)`, hay `:lib:randomua` trên web dùng Cloudflare Challenge:**
+    - **Lỗi xung đột giữa `:lib:cronet` và `CloudflareInterceptor`:** Khi thêm `.cronet()` vào `configureClient()`, `CronetInterceptor` sẽ bọc chuỗi thực thi vào `CronetChain` (nơi `chain.connection()` luôn bằng `null` vì không đi qua `ConnectInterceptor` của OkHttp). Khi đó `BrowserHeadersInterceptor` (`val http2 = chain.connection()?.protocol() == Protocol.HTTP_2`) sẽ hiểu nhầm kết nối là HTTP/1.1 (`http2 = false`) và **xóa mất header `Priority: u=0, i`** trong khi Cronet lại gửi gói tin qua HTTP/2. Đồng thời, phiên TLS của Google Play Services Cronet khác với phiên TLS của `Android System WebView` (nơi giải `cf_clearance`), khiến Cloudflare lập tức từ chối cookie `cf_clearance` và báo lỗi *"Failed to bypass Cloudflare"* trong Mihon!
+    - **Lỗi xung đột khi dùng `.addCookie(...)` hoặc `:lib:randomua`:** Việc ghi đè `CookieManager` liên tục qua `CookieInterceptor` hoặc đổi `User-Agent` ngẫu nhiên lệch với phiên bản Chromium thực tế của `WebView` trên điện thoại sẽ làm `cf_clearance` (vốn bị khóa chặt theo cặp `IP + User-Agent + Sec-CH-UA`) mất hiệu lực ngay lập tức.
+    - **Kết luận:** Với 99% trang web dùng Cloudflare Managed Challenge / Turnstile (như `manhwa-raw.com`), **giữ nguyên `OkHttpClient` và `Headers` mặc định của `KeiSource`** là cách vượt Cloudflare ổn định và nhanh nhất.
+
+- **Nguyên tắc 2 — Luôn gắn đúng loại `Fetch` cho từng loại Request:**
+  - Tải trang HTML (Danh sách truyện, Chi tiết truyện, Trang đọc chương): Dùng `client.get(url, Fetch.DOCUMENT)`.
+  - Gọi API ngầm (AJAX / JSON / GraphQL): Dùng `client.get(url, Fetch.XHR.from(refererUrl))` hoặc `client.post(url, headers, Fetch.XHR.from(refererUrl), body)`.
+  - Tải ảnh chương (`getPageList`): Truyền `document.location()` vào tham số thứ 2 của `Page(index, document.location(), imageUrl)` và override `getImageRequest(page)` để gắn `Referer` là URL của đúng chương đang đọc:
+    ```kotlin
+    override suspend fun getPageList(chapter: SChapter): List<Page> {
+        val document = client.get(getChapterUrl(chapter), Fetch.DOCUMENT).asJsoup()
+        val chapterLocation = document.location()
+        return document.select("div.page-break img.wp-manga-chapter-img")
+            .mapIndexedNotNull { index, element ->
+                val imageUrl = element.imgAttr() ?: return@mapIndexedNotNull null
+                Page(index, chapterLocation, imageUrl)
+            }
+    }
+
+    override fun getImageRequest(page: Page): Request = super.getImageRequest(page).newBuilder()
+        .apply {
+            if (page.url.isNotEmpty()) {
+                header("Referer", page.url)
+            }
+        }
+        .build()
+    ```
+
+- **Nguyên tắc 3 — Tránh các bẫy Anti-Bot & Tối ưu tốc độ trên các web WordPress Madara tùy biến (Case Study: `manhwa-raw.com`):**
+  Nhiều trang truyện lớn dùng giao diện gốc là WordPress Madara nhưng đã độ lại hệ thống chống bot rất gắt. Nếu chỉ kế thừa máy móc `Madara` hoặc `MadaraNoAjax`, nguồn sẽ chạy chậm hoặc lỗi tính năng:
+  1. **Bẫy `wp-admin/admin-ajax.php` gây khóa IP tạm thời (`HTTP 429 ip_temporarily_banned`):**
+     - Các trang chống bot thường chặn toàn bộ lệnh `POST /wp-admin/admin-ajax.php` (bao gồm `madara_load_more`, `manga_get_chapters`, `wp-manga-search-manga`, và cả `action=manga_views`).
+     - Trong theme `MadaraBase` gốc, hàm `enqueueViewCount()` tự động bắn 1 request `POST /wp-admin/admin-ajax.php` (`action=manga_views`) mỗi khi người dùng mở trang thông tin truyện hoặc mở chương truyện. Trên web có anti-bot, các request ngầm này trả về `429 ip_temporarily_banned`, vừa làm nghẽn kết nối vừa khiến IP người dùng bị cảnh cáo.
+     - **Cách tối ưu:** Kế thừa trực tiếp `KeiSource` (không gọi `admin-ajax.php`), đọc toàn bộ danh sách chương có sẵn ngay trong HTML trang chi tiết truyện (`li.wp-manga-chapter`) chỉ bằng **1 request GET duy nhất**.
+  2. **Bẫy tìm kiếm mặc định `?s=...&post_type=wp-manga` trả về `HTTP 410 Gone`:**
+     - Để chống bot cào tìm kiếm, web vô hiệu hóa tham số `?s=` (trả về lỗi `410 Gone`) và chuyển sang đường dẫn tĩnh `/search/<mbk_token>/<slug>/` kèm một mã `input[name=mbk_token]` ẩn trong form trang chủ.
+     - **Cách tối ưu tốc độ tìm kiếm gấp đôi (1 request thay vì 2 request):**
+       Trong code mẫu `ManhwaDashRaw` của Keiyoushi, mỗi khi tìm kiếm ở trang 1 (`page == 1`), code luôn bắt tải lại trang chủ `baseUrl` để đọc `mbk_token` rồi mới gọi `/search/<token>/<slug>/` (tốn **2 HTTP request tuần tự** cho mỗi lần tìm kiếm).
+       Cách tối ưu hơn hẳn là:
+       - Khởi tạo biến `searchToken` với giá trị token hiện hành và **tự động cập nhật `searchToken`** mỗi khi người dùng tải bất kỳ trang danh sách/bộ lọc nào (`document.selectFirst("input[name=mbk_token]")?.attrOrNull("value")`).
+       - Khi tìm kiếm, gọi thẳng `/search/$searchToken/$slug/` với `ensureSuccess = false` (**chỉ mất 1 request**). Chỉ khi server đổi token mới và trả về mã khác `200 OK` thì mới gọi `fetchSearchToken()` lấy lại từ trang chủ rồi thử lại:
+       ```kotlin
+       val response = client.get(buildSearchUrl(searchToken, slug, page), Fetch.DOCUMENT, ensureSuccess = false)
+       val document = if (response.isSuccessful) {
+           response.asJsoup()
+       } else {
+           response.close()
+           val refreshedToken = fetchSearchToken()
+           client.get(buildSearchUrl(refreshedToken, slug, page), Fetch.DOCUMENT).asJsoup()
+       }
+       ```
+  3. **Bẫy đường dẫn `/manga/` bị gắn Turnstile gắt hơn trang chủ `/` và mất danh sách Thể loại (Genres):**
+     - Trên một số web như `manhwa-raw.com`, đường dẫn `/manga/` không chứa khối HTML `div.genres` (khiến bộ lọc thể loại của `MadaraBase` bị rỗng) và bị áp luật Cloudflare gắt hơn trang chủ `/`. Trong khi đó, trang chủ `/` hiển thị đầy đủ danh sách truyện kèm phân trang `/page/2/`, còn danh sách 1.400+ thể loại nằm tại `/manga-tag/fin/`.
+     - Do đó, luôn kiểm tra kỹ HTML thực tế của từng đường dẫn thay vì phụ thuộc hoàn toàn vào đường dẫn mặc định của multisrc theme.
+  4. **Không đặt `rateLimit` cứng quá thấp khi không cần thiết:**
+     - Việc gắn `.rateLimit(2)` vào `configureClient()` sẽ bóp băng thông toàn bộ nguồn xuống tối đa 2 request/giây (mỗi request bị trễ 500ms). Khi đã loại bỏ các request rác (`admin-ajax.php`, double search request) và dùng chuẩn `Fetch.DOCUMENT` / `Fetch.IMAGE`, hãy để `OkHttpClient` chạy tốc độ tự nhiên giúp tải danh sách truyện và ảnh chương mượt mà nhất.
+
+---
+
+#### 2. Lỗi không tải được ảnh bìa hoặc lỗi `HTTP 403` khi đọc chương:
    - **Trường hợp A (Máy chủ ảnh chặn `Referer`):** Nhiều CDN ảnh (như `imggo.net` của `truyenvn.my`) có thuộc tính `referrerpolicy="no-referrer"` trên thẻ `<img>`. Do `KeiSource` mặc định gắn `Referer: $baseUrl/`, CDN sẽ trả về lỗi `403`.
      - **Cách khắc phục:** Thêm dòng sau vào class nguồn để gỡ bỏ `Referer`:
        ```kotlin
        override fun Headers.Builder.configureHeaders() = removeAll("Referer")
        ```
    - **Trường hợp B (Máy chủ ảnh bắt buộc phải có `Referer` của trang đọc):**
-     - Mặc định `KeiSource` đã gửi `Referer: $baseUrl/`, nên hầu hết các trang yêu cầu Referer sẽ tự động chạy tốt mà không cần cấu hình thêm.
+     - Mặc định `KeiSource` đã gửi `Referer: $baseUrl/`, hoặc nếu CDN yêu cầu `Referer` phải là đường dẫn chi tiết của chương truyện thì áp dụng cách truyền `document.location()` vào `Page(index, chapterLocation, imageUrl)` kèm `getImageRequest(page)` như đã hướng dẫn ở trên.
 
-2. **Quy tắc viết DTO khi parse JSON (`Dto.kt`):**
+#### 3. Quy tắc viết DTO khi parse JSON (`Dto.kt` / `Filters.kt`):
    - Dùng `class` thông thường kèm `@Serializable`, **không dùng `data class`** (để giảm dung lượng file build).
    - Dùng hàm `response.parseAs<MyDto>()` của `keiyoushi.utils`, không tự tạo biến `Json` riêng.
+   - **Lưu ý quy tắc `ktlint(standard:filename)` của Spotless:** Nếu một file `.kt` chỉ chứa **duy nhất 1 class** (ví dụ file `Dto.kt` chỉ chứa 1 class `GenreOption`), `spotlessKotlinApply` sẽ báo lỗi yêu cầu đổi tên file trùng với tên class (`GenreOption.kt`). Để gọn đẹp, nếu chỉ có 1 class `GenreOption` phục vụ bộ lọc thì gộp chung vào `Filters.kt`; chỉ tách ra `Dto.kt` khi có từ 2 class DTO trở lên.
 
-3. **Lưu đường dẫn tương đối (`setUrlWithoutDomain`):**
-   - Luôn lưu đường dẫn tương đối (ví dụ `/truyen-tranh/ten-bo-truyen`) hoặc slug vào `SManga.url` và `SChapter.url` bằng `setUrlWithoutDomain(element.absUrl("href"))`. Không bao giờ lưu kèm tên miền cứng `https://...` vào `url` để khi web đổi tên miền thì truyện đã lưu trong máy không bị hỏng.
+#### 4. Lưu đường dẫn tương đối (`setUrlWithoutDomain`):
+   - Luôn lưu đường dẫn tương đối (ví dụ `/truyen-tranh/ten-bo-truyen` hoặc `/manga/ten-bo-truyen/`) vào `SManga.url` và `SChapter.url` bằng `setUrlWithoutDomain(element.absUrl("href"))`. Không bao giờ lưu kèm tên miền cứng `https://...` vào `url` để khi web đổi tên miền thì truyện đã lưu trong máy không bị hỏng.
 
 ---
 
